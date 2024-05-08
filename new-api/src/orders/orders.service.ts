@@ -17,10 +17,13 @@ export class OrdersService {
     ).rows[0].order_id;
     for (const part of data) {
       const dataForPart: Record<string, any> = {};
-      if (part.partCode) {
+      if (part.partNumber) {
         const existingPart = await client.query(`
         select part_id
-        from parts where part_number = '${part.partCode}'`);
+        from parts where part_number = '${part.partNumber}'`);
+        if (!existingPart.rows[0]) {
+          throw Error('no such part number, try again');
+        }
         dataForPart.partId = existingPart.rows[0].part_id;
       } else {
         const possibleDescription = await client.query(`
@@ -53,15 +56,15 @@ export class OrdersService {
           const possibleCarModel = await client.query(`
             select car_model_id
             from car_models where car_brand_id=${possibleCarBrand.rows[0].car_brand_id} 
-            and name = '${part.carBrand}' and year = ${part.carYear};
+            and name = '${part.carBrand}' and year = ${part.carModelYear};
           `);
           if (possibleCarModel.rows[0]) {
             dataForPart.carModelId = possibleCarModel.rows[0].car_model_id;
           } else {
             const createdCarModel = await this.dbService.createCarModel(
               possibleCarBrand.rows[0].car_brand_id,
-              part.carYear,
-              part.carModel,
+              part.carModelYear,
+              part.carModelName,
             );
             dataForPart.carModelId = createdCarModel.rows[0].car_model_id;
           }
@@ -74,8 +77,8 @@ export class OrdersService {
 
           const createdCarModel = await this.dbService.createCarModel(
             createdCarBrand.rows[0].car_brand_id,
-            part.carYear,
-            part.carModel,
+            part.carModelYear,
+            part.carModelName,
           );
           dataForPart.carModelId = createdCarModel.rows[0].car_model_id;
         }
@@ -103,11 +106,16 @@ export class OrdersService {
   private async generatePartNumber() {
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let result = '';
-    for (let i = 0; i < length; i++) {
+    for (let i = 0; i < 8; i++) {
       result += characters.charAt(
         Math.floor(Math.random() * characters.length),
       );
     }
     return result;
+  }
+
+  async getOrders() {
+    const client = await this.dbService.openConnection('root'); //change role
+    const orders = await client.query;
   }
 }

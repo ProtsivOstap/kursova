@@ -3,10 +3,10 @@ export class CreateOrderDto {
 }
 
 export type PartOrder = {
-  partCode?: string;
-  carModel?: string;
+  partNumber?: string;
+  carModelName?: string;
   carBrand?: string;
-  carYear?: number;
+  carModelYear?: number;
   generalPartName?: string;
   partGroupName?: string;
   specificPartName?: string;

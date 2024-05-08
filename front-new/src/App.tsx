@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import { AppBar, Button, Container, Toolbar, Typography } from '@mui/material';
 import LoginPage from './components/pages/LoginPage';
 import PartsPage from './components/pages/PartsPage';
+import ResponsiveAppBar from './components/navbar/navbar';
 
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -23,18 +24,7 @@ const App: React.FC = () => {
 
   return (
     <Router>
-      <AppBar position="static">
-        <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            My App
-          </Typography>
-          {isLoggedIn && (
-            <Button color="inherit" onClick={handleLogout}>
-              Logout
-            </Button>
-          )}
-        </Toolbar>
-      </AppBar>
+      <ResponsiveAppBar/>
       <Container maxWidth="sm" sx={{ marginTop: '2rem' }}>
         <Routes>
           <Route

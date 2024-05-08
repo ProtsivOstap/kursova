@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import React, { useEffect, useState } from "react";
+import axios from "axios";
 import {
   Table,
   TableHead,
@@ -12,9 +12,11 @@ import {
   DialogTitle,
   DialogContent,
   TextField,
-} from '@mui/material';
+} from "@mui/material";
+import { BACK_URL } from "../constants/constants";
+import { instanceOfPart } from "../heplers/heplers";
 
-interface Part {
+export interface Part {
   partNumber: string;
   specificPartName: string;
   partGroupName: string;
@@ -23,35 +25,39 @@ interface Part {
   carModelYear: number;
   carBrand: string;
 }
+type PartNoPartNumber = Omit<Part, "partNumber">;
+type PartOnlyPartNumber = Pick<Part, "partNumber">;
+type CreateOrderPart = PartNoPartNumber | PartOnlyPartNumber;
 
 interface PartsPageProps {
   onOrderSubmit: (orderData: { partNumber: string }[]) => void;
 }
 const PartsPage: React.FC<PartsPageProps> = ({ onOrderSubmit }) => {
   const [parts, setParts] = useState<Part[]>([]);
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState<string>("");
   const [page, setPage] = useState<number>(1);
   const [limit, setLimit] = useState<number>(10); // Set your preferred default limit here
   const [totalItems, setTotalItems] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [openModal, setOpenModal] = useState<boolean>(false);
-  const [partNumbers, setPartNumbers] = useState<string[]>(['']);
+  const [partNumbers, setPartNumbers] = useState<Array<CreateOrderPart>>([]);
+  const [requestedPartNumbers, setRequestedPartNumbers] = useState([]);
   const [newPart, setNewPart] = useState<{
     generalPartName: string;
     carModelName: string;
   }>({
-    generalPartName: '',
-    carModelName: '',
+    generalPartName: "",
+    carModelName: "",
   });
 
   useEffect(() => {
     const fetchParts = async () => {
       try {
         const response = await axios.get(
-          `https://568f-109-207-116-159.ngrok-free.app/parts?page=${page}&limit=${limit}`,
+          `${BACK_URL}/parts?page=${page}&limit=${limit}`,
           {
             headers: {
-              'ngrok-skip-browser-warning': 'true',
+              "ngrok-skip-browser-warning": "true",
             },
           }
         );
@@ -63,8 +69,8 @@ const PartsPage: React.FC<PartsPageProps> = ({ onOrderSubmit }) => {
         const calculatedTotalPages = Math.ceil(totalNumber / limit);
         setTotalPages(calculatedTotalPages);
       } catch (error) {
-        console.error('Error fetching parts:', error);
-        setError('Failed to fetch parts. Please try again later.');
+        console.error("Error fetching parts:", error);
+        setError("Failed to fetch parts. Please try again later.");
         setParts([]); // Set parts to an empty array in case of error
       }
     };
@@ -88,32 +94,41 @@ const PartsPage: React.FC<PartsPageProps> = ({ onOrderSubmit }) => {
   };
 
   const handleAddPartNumber = () => {
-    setPartNumbers([...partNumbers, '']);
+    console.log("asdasdnk");
+
+    setPartNumbers((prevPartNumbers) => [
+      ...prevPartNumbers,
+      { partNumber: "" } as CreateOrderPart, // Type assertion
+    ]);
   };
 
-  const handleSubmitOrder = () => {
-    const orderData = partNumbers.filter((part) => part !== '');
-    onOrderSubmit(orderData.map((partNumber) => ({ partNumber })));
+  const handleSubmitOrder = async () => {
+    console.log(partNumbers);
+    const response = await axios.post(`${BACK_URL}/orders`, partNumbers);
+    console.log(response);
+    
+    // const orderData = partNumbers.filter((part) => part !== "");
+    // onOrderSubmit(orderData.map((partNumber) => ({ partNumber })));
     handleCloseModal();
   };
 
   const handleCreateNew = () => {
-    setPartNumbers(['']); // Reset part numbers
+    setPartNumbers([]); // Reset part numbers
   };
 
   const handleCreatePart = async () => {
     try {
-      const response = await axios.post(
-        'https://568f-109-207-116-159.ngrok-free.app/parts',
-        {
-          generalPartName: newPart.generalPartName,
-          carModelName: newPart.carModelName,
-        }
-      );
-      const { partNumber } = response.data;
-      setPartNumbers((prevPartNumbers) => [...prevPartNumbers, partNumber]);
+      const newPartNumber: PartNoPartNumber = {
+        carBrand: "",
+        carModelName: "",
+        carModelYear: 0,
+        generalPartName: "",
+        partGroupName: "",
+        specificPartName: "",
+      };
+      setPartNumbers((prevPartNumbers) => [...prevPartNumbers, newPartNumber]);
     } catch (error) {
-      console.error('Error creating new part:', error);
+      console.error("Error creating new part:", error);
       // Handle error
     }
   };
@@ -156,28 +171,45 @@ const PartsPage: React.FC<PartsPageProps> = ({ onOrderSubmit }) => {
         shape="rounded"
       />
       <Button onClick={handleOpenModal}>Create Order</Button>
-      <Dialog open={openModal} onClose={handleCloseModal}>
+      <Dialog
+        open={openModal}
+        onClose={handleCloseModal}
+        fullWidth
+        maxWidth="xl"
+        sx={{ "& .MuiDialog-paper": { width: "90%" } }}
+      >
         <DialogTitle>Create Order</DialogTitle>
         <DialogContent>
-          {partNumbers.map((partNumber, index) => (
-            <TextField
-              key={index}
-              label={`Part Number ${index + 1}`}
-              value={partNumber}
-              onChange={(event) =>
-                setPartNumbers((prevPartNumbers) => {
-                  const updatedPartNumbers = [...prevPartNumbers];
-                  updatedPartNumbers[index] = event.target.value;
-                  return updatedPartNumbers;
-                })
-              }
-              fullWidth
-              margin="normal"
-            />
+          {partNumbers.map((part, index) => (
+            <div key={index}>
+              {Object.keys(part).map((key, i) => (
+                <TextField
+                  key={i}
+                  label={key}
+                  value={part[key as keyof CreateOrderPart]}
+                  onChange={(event) =>
+                    setPartNumbers((prevPartNumbers) => {
+                      const updatedPartNumbers = [...prevPartNumbers];
+                      updatedPartNumbers[index][key as keyof CreateOrderPart] =
+                        event.target.value as never;
+                      return updatedPartNumbers;
+                    })
+                  }
+                  fullWidth
+                  margin="normal"
+                  style={
+                  // @ts-expect-error
+                    part.partNumber
+                      ? { width: 400, margin: 20 }
+                      : { width: 200, margin: 20 }
+                  }
+                />
+              ))}
+            </div>
           ))}
-          <Button onClick={handleAddPartNumber}>+</Button>
+          <Button onClick={handleAddPartNumber}>Add part code</Button>
           <Button onClick={handleSubmitOrder}>Submit Order</Button>
-          <Button onClick={handleCreatePart}>Create Part</Button>
+          <Button onClick={handleCreatePart}>Add new part</Button>
           <Button onClick={handleCreateNew}>Create New</Button>
           <Button onClick={handleCloseModal}>Cancel</Button>
         </DialogContent>
