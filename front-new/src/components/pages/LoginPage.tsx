@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Button, TextField, Typography } from '@mui/material';
 import { jwtDecode } from 'jwt-decode';
+import { BACK_URL } from '../constants/constants';
+import { useAuth } from '../../context/AuthContext';
 
 interface LoginPageProps {
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
@@ -10,10 +12,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ setIsLoggedIn }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const {setAuth} = useAuth()
   const handleLogin = async () => {
     try {
       const response = await fetch(
-        'https://568f-109-207-116-159.ngrok-free.app/auth/login',
+        `${BACK_URL}/auth/login`,
         {
           method: 'POST',
           headers: {
@@ -35,10 +38,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ setIsLoggedIn }) => {
 
       // Decode JWT token to extract user information
       const decodedToken: any = jwtDecode(token);
-
+      console.log(decodedToken,'asdjndasj');
+      
       // Extract user role from decoded token
       const userRole = decodedToken.role;
-
+      setAuth({accessToken:token,email:'asdads',role:'asdda',userId:'asdasd'});
       // Update auth state
       setIsLoggedIn(true);
 

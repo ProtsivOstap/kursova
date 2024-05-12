@@ -1,29 +1,79 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useEffect, useState, ReactNode, useContext } from "react";
+import {jwtDecode} from "jwt-decode";
+
+interface TokenData {
+    email: string;
+    role: string;
+    userId:string;
+}
+
+interface Auth {
+    email: string;
+    role: string;
+    accessToken: string;
+    userId:string;
+}
 
 interface AuthContextType {
-  token: string | null;
-  setToken: (token: string | null) => void;
+    auth: Auth | null;
+    setAuth: (auth: Auth | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
-  token: null,
-  setToken: () => {},
+    auth: null,
+    setAuth: () => {}
 });
 
-export const useAuth = () => useContext(AuthContext);
-
-interface AuthProviderProps {
-  children: ReactNode; // Define children prop as ReactNode
+export const useAuth = () => {
+    return useContext(AuthContext);
 }
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(
-    localStorage.getItem('token')
-  );
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const [auth, setAuth] = useState<Auth | null>(() => {
+        const token = localStorage.getItem('token');
+        if (token) {
+            try {
+                const tokenData = jwtDecode<TokenData>(token);
+                return {
+                    email: tokenData.email,
+                    role: tokenData.role,
+                    accessToken: token,
+                    userId:tokenData.userId
+                };
+            } catch (error) {
+                console.error("Error decoding token:", error);
+                return null;
+            }
+        } else {
+            return null;
+        }
+    });
 
-  return (
-    <AuthContext.Provider value={{ token, setToken }}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (token) {
+            try {
+                const tokenData = jwtDecode<TokenData>(token);
+                setAuth({
+                    email: tokenData.email,
+                    role: tokenData.role,
+                    accessToken: token,
+                    userId:tokenData.userId
+                });
+            } catch (error) {
+                console.error("Error decoding token:", error);
+                setAuth(null);
+            }
+        } else {
+            setAuth(null);
+        }
+    }, []);
+
+    return (
+        <AuthContext.Provider value={{ auth, setAuth }}>
+            {children}
+        </AuthContext.Provider>
+    )
+}
+
+export default AuthContext;

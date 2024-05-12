@@ -2,24 +2,27 @@ import { Injectable } from '@nestjs/common';
 import { DbService } from 'src/db/db.service';
 import { GetPartsDto } from './dtos/getParts.dto';
 import * as _ from 'lodash';
+import { User } from 'src/auth/types/user.type';
 
 @Injectable()
 export class PartsService {
   constructor(private readonly dbService: DbService) {}
 
-  async getParts({
-    limit,
-    page,
-    partNumber,
-    partId,
-    specificPartName,
-    partGroupName,
-    generalPartName,
-    carModelName,
-    carModelYear,
-    carBrand,
-  }: GetPartsDto) {
-    const client = await this.dbService.openConnection('root'); //add role
+  async getParts(
+    {
+      limit,
+      page,
+      partNumber,
+      specificPartName,
+      partGroupName,
+      generalPartName,
+      carModelName,
+      carModelYear,
+      carBrand,
+    }: GetPartsDto,
+    user: User,
+  ) {
+    const client = await this.dbService.openConnection(user.role); //add role
     const mainQuery = `
 SELECT
   p.part_number as "partNumber",
@@ -41,7 +44,6 @@ LEFT JOIN car_brands as cb ON cb.car_brand_id = cm.car_brand_id
 
     const filters = [];
     if (partNumber) filters.push(`p.part_number LIKE '%${partNumber}%'`);
-    if (partId) filters.push(`p.part_id LIKE '%${partId}%'`);
     if (specificPartName)
       filters.push(`pd.specific_part_name LIKE '%${specificPartName}%'`);
     if (partGroupName)
@@ -49,9 +51,9 @@ LEFT JOIN car_brands as cb ON cb.car_brand_id = cm.car_brand_id
     if (generalPartName)
       filters.push(`pd.general_part_name LIKE '%${generalPartName}%'`);
     if (carModelName) filters.push(`cm.name LIKE '%${carModelName}%'`);
-    if (carModelYear) filters.push(`cm.year LIKE '%${carModelYear}%'`);
+    if (carModelYear) filters.push(`cm.year = '${carModelYear}'`);
     if (carBrand) filters.push(`cb.brand_name LIKE '%${carBrand}%'`);
-
+    filters.push(`p.status = 'available'`);
     if (filters.length > 0) {
       query += 'WHERE ' + filters.join(' AND ');
     }
@@ -64,15 +66,71 @@ LEFT JOIN car_brands as cb ON cb.car_brand_id = cm.car_brand_id
       OFFSET ${(page - 1) * limit};`;
     const foundParts = await client.query(mainQuery + query);
     console.log(mainQuery + query);
-
+    await client.end();
     return {
       parts: foundParts.rows,
       totalNumber: totalNumber.rows[0].number,
     };
   }
 
-  async getPartById(partId: number) {
+  async downloadFile({
+    partNumber,
+    specificPartName,
+    partGroupName,
+    generalPartName,
+    carModelName,
+    carModelYear,
+    carBrand,
+  }: GetPartsDto) {
     const client = await this.dbService.openConnection('root'); //add role
+    const mainQuery = `
+    COPY (
+SELECT
+  p.part_number as "partNumber",
+  p.part_id as "partId",
+  pd.specific_part_name as "specificPartName",
+  pd.part_group_name as "partGroupName",
+  pd.general_part_name as "generalPartName",
+  cm.name as "carModelName",
+  cm.year as "carModelYear",
+  cb.brand_name as "carBrand"
+`;
+
+    let query = `
+FROM parts as p
+LEFT JOIN parts_descriptions as pd ON p.part_description_id = pd.part_description_id
+LEFT JOIN car_models as cm ON p.car_model_id = cm.car_model_id
+LEFT JOIN car_brands as cb ON cb.car_brand_id = cm.car_brand_id
+`;
+
+    const filters = [];
+    if (partNumber) filters.push(`p.part_number LIKE '%${partNumber}%'`);
+    if (specificPartName)
+      filters.push(`pd.specific_part_name LIKE '%${specificPartName}%'`);
+    if (partGroupName)
+      filters.push(`pd.part_group_name LIKE '%${partGroupName}%'`);
+    if (generalPartName)
+      filters.push(`pd.general_part_name LIKE '%${generalPartName}%'`);
+    if (carModelName) filters.push(`cm.name LIKE '%${carModelName}%'`);
+    if (carModelYear) filters.push(`cm.year LIKE '%${carModelYear}%'`);
+    if (carBrand) filters.push(`cb.brand_name LIKE '%${carBrand}%'`);
+    filters.push(`p.status = 'available'`);
+    if (filters.length > 0) {
+      query += 'WHERE ' + filters.join(' AND ');
+    }
+
+    query += ` ORDER BY part_number`;
+    query += `) TO '/tmp/test.csv' WITH CSV HEADER;`;
+
+    const foundParts = await client.query(mainQuery + query);
+    await client.end();
+    return {
+      parts: foundParts.rows,
+    };
+  }
+
+  async getPartById(partId: number, user: User) {
+    const client = await this.dbService.openConnection(user.role); //add role
     const query = `
     select p.part_number as "partNumber", p.part_id as "partId",
     pd.specific_part_name as "specificPartName", pd.part_group_name as "partGroupName",
@@ -92,6 +150,7 @@ LEFT JOIN car_brands as cb ON cb.car_brand_id = cm.car_brand_id
         supplierName: rowData.supplierName,
       };
     });
+    await client.end();
     return _.omit({ ...foundPartData[0], suppliers }, [
       'supplierName',
       'supplierId',

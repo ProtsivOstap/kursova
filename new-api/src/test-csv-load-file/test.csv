@@ -1,0 +1,5 @@
+partNumber,generalPartName,partGroupName,specificPartName,carBrandName,carModelName,carModelYear
+12345,Engine,Internal Parts,Piston Rings,Ford,Fusion,2022
+67890,Tire,Wheel Components,Tire Pressure Sensor,Toyota,Camry,2021
+13579,Brake,Braking System,Brake Pads,Chevrolet,Impala,2020
+24680,Transmission,Gearbox,Gear Selector Cable,Honda,Accord,2019

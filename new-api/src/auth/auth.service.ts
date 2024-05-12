@@ -27,7 +27,7 @@ export class AuthService {
     if (!possibleUser) {
       throw new Error('Wrong email or password');
     }
-
+    await connection.end();
     return this.jwtService.sign({
       userId: possibleUser.userId,
       role: possibleUser.role,

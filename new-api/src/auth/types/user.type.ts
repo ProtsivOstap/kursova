@@ -1,7 +1,7 @@
 export class User {
-  UserId: number;
-  Email: string;
-  Role: RoleEnum;
+  user_id: number;
+  email: string;
+  role: RoleEnum;
 }
 
 export enum RoleEnum {

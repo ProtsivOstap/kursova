@@ -16,11 +16,12 @@ import { useAuth } from "../../context/AuthContext";
 const pages = [
   { page: "parts"},
   { page: "orders" },
+  { page: "suppliers" }
 ];
 const settings = ["home"];
 
 function ResponsiveAppBar() {
-  const { token } = useAuth();
+  const { auth } = useAuth();
   const [anchorElNav, setAnchorElNav] = React.useState(null);
   const [anchorElUser, setAnchorElUser] = React.useState(null);
   const handleOpenNavMenu = (event:any) => {
@@ -125,7 +126,7 @@ function ResponsiveAppBar() {
           </Typography>
           <Box sx={{ flexGrow: 1, display: { xs: "none", md: "flex" } }}>
             {pages.map(({ page }) => {
-              if (token || true) {
+              if (auth || true) {
                 return (
                   <Button
                     key={page}

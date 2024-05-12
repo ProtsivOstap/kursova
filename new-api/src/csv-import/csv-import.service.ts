@@ -3,10 +3,226 @@ import * as fs from 'fs';
 import * as csv from 'csv-parser';
 import { DbService } from 'src/db/db.service';
 import { Client } from 'pg';
+import { User } from 'src/auth/types/user.type';
+import * as csvParser from 'csv-parser';
 
 @Injectable()
 export class CsvImportService {
   constructor(private readonly dbService: DbService) {}
+
+  async loadPartsSupplier(supplierUser: User, filePath: string) {
+    console.log(filePath);
+
+    const client = await this.dbService.openConnection(supplierUser.role);
+    await client.query('BEGIN');
+    const partsData = [];
+    fs.createReadStream(filePath)
+      .pipe(csvParser())
+      .on('data', (row) => {
+        partsData.push(row);
+      })
+      .on('end', async () => {
+        try {
+          const userSupplier = await client.query(
+            `select supplier_id from suppliers where  user_id = ${supplierUser.user_id}`,
+          );
+          const supplierId = userSupplier.rows[0].supplier_id;
+          for (const data of partsData) {
+            // Extract data from the row
+            const {
+              partNumber,
+              generalPartName,
+              partGroupName,
+              specificPartName,
+              carBrandName,
+              carModelName,
+              carModelYear,
+            } = data;
+
+            // Check if part already exists
+            const existingPart = await this.checkExistingPart(
+              client,
+              partNumber,
+            );
+            if (existingPart) {
+              console.log(
+                `Part with part number ${partNumber} already exists. Skipping...`,
+              );
+              continue;
+            }
+
+            // Check existing part description or create one
+            let partDescriptionId = await this.checkExistingPartDescription(
+              client,
+              generalPartName,
+              partGroupName,
+              specificPartName,
+            );
+            if (!partDescriptionId) {
+              partDescriptionId = await this.insertPartDescription(
+                client,
+                generalPartName,
+                partGroupName,
+                specificPartName,
+              );
+            }
+
+            // Check existing car brand or create one
+            let carBrandId = await this.checkExistingCarBrand(
+              client,
+              carBrandName,
+            );
+            if (!carBrandId) {
+              carBrandId = await this.insertCarBrand(client, carBrandName);
+            }
+
+            // Check existing car model or create one
+            let carModelId = await this.checkExistingCarModel(
+              client,
+              carBrandId,
+              carModelName,
+              carModelYear,
+            );
+            if (!carModelId) {
+              carModelId = await this.insertCarModel(
+                client,
+                carBrandId,
+                carModelName,
+                carModelYear,
+              );
+            }
+
+            // Insert part
+            const insertedPartId = await this.insertPart(
+              client,
+              partNumber,
+              partDescriptionId,
+              'available',
+              carModelId,
+            );
+
+            await this.linkPartSupplier(supplierId, insertedPartId, client);
+            console.log(
+              `Part with part number ${partNumber} inserted successfully.`,
+            );
+          }
+        } catch (error) {
+          await client.query('ROLLBACK');
+          console.error('Error occurred while importing parts:', error);
+        } finally {
+          await client.query('END');
+          await client.end();
+        }
+      });
+  }
+
+  async linkPartSupplier(supplierId: string, partId: string, client: Client) {
+    await client.query(`
+    insert into parts_supplier (part_id, supplier_id) values ('${partId}','${supplierId}');
+    `);
+  }
+
+  async checkExistingPart(
+    client: Client,
+    partNumber: string,
+  ): Promise<boolean> {
+    const queryResult = await client.query(
+      'SELECT EXISTS(SELECT 1 FROM parts WHERE part_number = $1)',
+      [partNumber],
+    );
+    return queryResult.rows[0].exists;
+  }
+
+  async checkExistingPartDescription(
+    client: Client,
+    generalPartName: string,
+    partGroupName: string,
+    specificPartName: string,
+  ): Promise<number> {
+    const queryResult = await client.query(
+      'SELECT part_description_id FROM parts_descriptions WHERE general_part_name = $1 AND part_group_name = $2 AND specific_part_name = $3',
+      [generalPartName, partGroupName, specificPartName],
+    );
+    return queryResult.rows.length > 0
+      ? queryResult.rows[0].part_description_id
+      : null;
+  }
+
+  async insertPartDescription(
+    client: Client,
+    generalPartName: string,
+    partGroupName: string,
+    specificPartName: string,
+  ): Promise<number> {
+    const queryResult = await client.query(
+      'INSERT INTO parts_descriptions (general_part_name, part_group_name, specific_part_name) VALUES ($1, $2, $3) RETURNING part_description_id',
+      [generalPartName, partGroupName, specificPartName],
+    );
+    return queryResult.rows[0].part_description_id;
+  }
+
+  async checkExistingCarBrand(
+    client: Client,
+    brandName: string,
+  ): Promise<number> {
+    const queryResult = await client.query(
+      'SELECT car_brand_id FROM car_brands WHERE brand_name = $1',
+      [brandName],
+    );
+    return queryResult.rows.length > 0
+      ? queryResult.rows[0].car_brand_id
+      : null;
+  }
+
+  async insertCarBrand(client: Client, brandName: string): Promise<number> {
+    const queryResult = await client.query(
+      'INSERT INTO car_brands (brand_name) VALUES ($1) RETURNING car_brand_id',
+      [brandName],
+    );
+    return queryResult.rows[0].car_brand_id;
+  }
+
+  async checkExistingCarModel(
+    client: Client,
+    carBrandId: number,
+    carModelName: string,
+    carModelYear: string,
+  ): Promise<number> {
+    const queryResult = await client.query(
+      'SELECT car_model_id FROM car_models WHERE car_brand_id = $1 AND name = $2 AND year = $3',
+      [carBrandId, carModelName, carModelYear],
+    );
+    return queryResult.rows.length > 0
+      ? queryResult.rows[0].car_model_id
+      : null;
+  }
+
+  async insertCarModel(
+    client: Client,
+    carBrandId: number,
+    carModelName: string,
+    carModelYear: string,
+  ): Promise<number> {
+    const queryResult = await client.query(
+      'INSERT INTO car_models (car_brand_id, name, year) VALUES ($1, $2, $3) RETURNING car_model_id',
+      [carBrandId, carModelName, carModelYear],
+    );
+    return queryResult.rows[0].car_model_id;
+  }
+
+  async insertPart(
+    client: Client,
+    partNumber: string,
+    partDescriptionId: number,
+    status: string,
+    carModelId: number,
+  ): Promise<string> {
+    const res = await client.query(
+      'INSERT INTO parts (part_number, part_description_id, status, car_model_id) VALUES ($1, $2, $3, $4) returning part_id',
+      [partNumber, partDescriptionId, status, carModelId],
+    );
+    return res.rows[0].part_id;
+  }
 
   async generateCars(client: Client) {
     const carModelsAndBrands = {
@@ -248,62 +464,68 @@ export class CsvImportService {
 
   async readCsvFileParts(): Promise<any> {
     const client = await this.dbService.openConnection('root');
-    const partFilePath =
-      '/Users/ostap/Desktop/labs/kursova/csvData/tecdocdatabase2Q2018/articles.csv';
-    const partDescriptionFilePath =
-      '/Users/ostap/Desktop/labs/kursova/csvData/tecdocdatabase2Q2018/products.csv';
+    await client.query(`BEGIN`);
+    try {
+      const partFilePath =
+        '/Users/ostap/Desktop/labs/kursova/csvData/tecdocdatabase2Q2018/articles.csv';
+      const partDescriptionFilePath =
+        '/Users/ostap/Desktop/labs/kursova/csvData/tecdocdatabase2Q2018/products.csv';
 
-    const partsResults: any[] = await this.readCsvPartsFile(partFilePath);
-    const partDescriptionResults: any[] =
-      await this.readCsvPartsDescriptionsFile(partDescriptionFilePath);
-    const supplierData = await this.readCsvSupplierFile(
-      '/Users/ostap/Desktop/labs/kursova/csvData/tecdocdatabase2Q2018/suppliers.csv',
-    );
-    console.log(supplierData);
+      const partsResults: any[] = await this.readCsvPartsFile(partFilePath);
+      const partDescriptionResults: any[] =
+        await this.readCsvPartsDescriptionsFile(partDescriptionFilePath);
+      const supplierData = await this.readCsvSupplierFile(
+        '/Users/ostap/Desktop/labs/kursova/csvData/tecdocdatabase2Q2018/suppliers.csv',
+      );
 
-    await this.generateCars(client);
-    for (const partData of partsResults) {
-      const existingPart = await client.query(`
+      await this.generateCars(client);
+      for (const partData of partsResults) {
+        const existingPart = await client.query(`
       select part_id from parts where part_number = '${partData.partNumber}'
         `);
-      if (existingPart.rows[0]) continue;
-      const supplier = supplierData.find(
-        (supplier) => supplier.id === partData.oldSupplierId,
-      );
-      const savedSupplier = await client.query(`
+        if (existingPart.rows[0]) continue;
+        const supplier = supplierData.find(
+          (supplier) => supplier.id === partData.oldSupplierId,
+        );
+        const savedSupplier = await client.query(`
         select supplier_id from suppliers where supplier_name = '${supplier.Description}';
       `);
-      if (!savedSupplier.rows[0]) continue;
+        if (!savedSupplier.rows[0]) continue;
 
-      const relatedPartDescription = partDescriptionResults.find(
-        (partDesc) => partData.productId === partDesc.productId,
-      );
+        const relatedPartDescription = partDescriptionResults.find(
+          (partDesc) => partData.productId === partDesc.productId,
+        );
 
-      const existingPartDescription = await client.query(
-        `select part_description_id from parts_descriptions where
+        const existingPartDescription = await client.query(
+          `select part_description_id from parts_descriptions where
         general_part_name='${relatedPartDescription.generalPartName}'
         and part_group_name ='${relatedPartDescription.partGroupName}'
         and specific_part_name ='${relatedPartDescription.specificPartName}'`,
-      );
-      let existingPartDescriptionId =
-        existingPartDescription.rows[0]?.part_description_id;
-      if (!existingPartDescriptionId) {
-        const savedPartDescription =
-          await client.query(`insert into parts_descriptions (general_part_name, part_group_name, specific_part_name)
+        );
+        let existingPartDescriptionId =
+          existingPartDescription.rows[0]?.part_description_id;
+        if (!existingPartDescriptionId) {
+          const savedPartDescription =
+            await client.query(`insert into parts_descriptions (general_part_name, part_group_name, specific_part_name)
         values ('${relatedPartDescription.generalPartName}', '${relatedPartDescription.partGroupName}', '${relatedPartDescription.specificPartName}')
         returning part_description_id`);
-        existingPartDescriptionId =
-          savedPartDescription.rows[0].part_description_id;
-      }
-      const createdPart = await client.query(`
+          existingPartDescriptionId =
+            savedPartDescription.rows[0].part_description_id;
+        }
+        const createdPart = await client.query(`
       INSERT INTO parts (part_number, part_description_id, status, car_model_id)
       VALUES ('${partData.partNumber}', ${existingPartDescriptionId}, 'available', (SELECT car_model_id FROM car_models ORDER BY RANDOM() LIMIT 1))
       RETURNING part_id`);
 
-      await client.query(`
+        await client.query(`
         insert into parts_supplier (part_id, supplier_id) values (${createdPart.rows[0].part_id}, ${savedSupplier.rows[0].supplier_id});
       `);
+      }
+    } catch (error) {
+      console.log(error);
+      await client.query(`ROLLBACK`);
     }
+    await client.query(`END`);
   }
 
   async readCsvFile(): Promise<any[]> {

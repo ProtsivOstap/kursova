@@ -5,7 +5,7 @@ import { Client } from 'pg';
 export class DbService {
   private client: Client;
   async openConnection(userRole: string) {
-    if (this.client) return this.client;
+    // if (this.client) return this.client;
     let username;
     let password;
 
@@ -13,12 +13,14 @@ export class DbService {
       username = 'admin';
       password = 'admin_password';
     } else if (userRole === 'user') {
-      username = 'user';
+      username = 'app_user';
       password = 'user_password';
     } else if (userRole === 'root') {
       username = 'postgres';
       password = 'password';
     } else if (userRole === 'supplier') {
+      console.log('daskndnjkdasnjkdsnkjs');
+
       username = 'supplier';
       password = 'supplier_password';
     }
